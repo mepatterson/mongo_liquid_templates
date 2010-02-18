@@ -1,0 +1,125 @@
+h1. Mongo Liquid Templates (forked from Dynamic Liquid Templates by akitaonrails)
+
+h2. Use Case
+
+The Rails View system is very complex and complete, 90% of the time you don't need much else but the occasional Haml support.
+
+But if you want to have your users have the feature of editing their own set of view templates, then the default filesystem-based view system will not be enough. That's why I wanted to have a way to retrieve templates from the database instead.
+
+By having your templates being user-editable, it's also not acceptable to use ERB or Haml,because they are too powerful and they expose just too much in the views. You want an engine that exposes just enough so the users can create their own templates without having the risk of they running something nasty such as _system('rm -Rf /')_
+
+That's why I chose Tobias Lütke's excellent "Liquid":http://github.com/tobi/liquid engine that he created for "Shopify.com":http://shopify.com for exactly the same reason. I have no idea how he manages the user templates but in my case I created this plugin to fulfill this requirement.
+
+h2. Usage
+
+Just install it as a plugin into your Rails project and make sure you have MongoDB and MongoMapper:
+
+<pre><code>
+./script/plugin install git://github.com/akitaonrails/dynamic_liquid_templates.git
+./script/generate dynamic_templates
+</code></pre>
+
+The requirement is to install Tobias' Liquid gem as well as the mongo stuff:
+
+<pre><code>
+gem install liquid
+gem install mongo
+gem install mongo_ext
+gem install mongomapper
+</code></pre>
+
+You also have to require this gem from your _config/environment.rb_ file:
+
+<pre><code>
+config.gem "liquid"
+config.gem "mongo"
+config.gem "mongo_ext"
+config.gem "mongomapper"
+
+</code></pre>
+
+Now, from within the controller that you want to be user-accessible, edit the 'format.html' block with the new render method:
+
+<pre><code>
+...
+respond_to do |format|
+  format.html { render_with_dynamic_liquid }
+end
+...
+</code></pre>
+
+<pre><code>
+DynamicTemplate.create(:path => "posts/show", :body => "<h2>{{ post.title }}</h2>\n<p>{{ post.body }}</p>")
+</code></pre>
+
+Every normal controller instance variables such as _@post_ or _@comments_ will be available as 'post' or 'comments' from inside the Liquid template. Your usual Rails helpers are also available as Liquid filters. In ERB and HAML you usually have access to everything, but Liquid restricts your access (that's the whole idea) and you have to explicitly assign extra objects to the render method, for instance:
+
+<pre><code>
+...
+@foo = Foo.find_by_name("Bar")
+render_with_dynamic_liquid('foo' => @foo)
+</code></pre>
+
+This will make 'foo' available from the Liquid Template. Read the library source code for more details, but it's enough to understand that this render method will follow Rails' convention over configuration principals so, for instance, if you're inside the _index_ action of a _PostsController_, you're expected to have a collection named '@posts' and named routes such as _posts_path_ and so on, and so forth.
+
+If you're inside a nested controller (such as 'Comment belongs_to Post'), declare a method named 'parent', for example:
+
+<pre><code>
+class CommentsController < ApplicationController
+  ...
+  def parent
+    @post ||= Post.find(params[:post_id])
+  end
+end
+</code></pre>
+
+The plugin will use this method to refer to the proper named routes, such as _post_comments_path(parent)_ or _post_comment_path(parent, @comment)_ and so on. Namespaces will work too, for example:
+
+<pre><code>
+class Admin::PostsController < ApplicationController
+  def index
+     @posts = Post.all
+     respond_to do |format|
+       format.html { render_with_dynamic_liquid(:namespace => 'admin') } 
+     end
+	end
+end
+</code></pre>
+
+There's probably a better syntax for that, but it works like that too. The other thing is that your models need to be 'liquified' in order to be usable from inside a Liquid template. You have to declare a _to_liquid_ method explicitly saying which columns you want exposed:
+
+<pre><code>
+class Post
+  include MongoMapper::Document
+  ...
+  def to_liquid
+    { 'title' => self.title, 'body' => self.body }
+  end
+end
+</code></pre>
+
+Notice that the hash keys have to be strings, and not symbols. The other thing is that the plugin will append other attributes to this hash automagically, so you can do the following from within your Liquid templates:
+
+<pre><code>{{ 'Show' | link_to: post.show_path }}</code></pre>
+
+It adds 'show_path' and 'edit_path' to your model instances, so you can use them to create links or form actions. There are other globally assigned variables as well, such as:
+
+* collection - refers to the controller collection (for index action) such as @posts
+* object - referes to the controller single object (for non-index actions) such as @post
+* collection_path - the named route for the index action, including nested and namespaced versions
+* object_path - the named route for the non-index action, including nested and namespaced versions
+* parent - if you have the 'parent' method in your controller, it's exposed within Liquid
+* parent_path - if you have the 'parent' method in your controller, it's used for named routes
+
+And, of course, your models are properly assigned to Liquid too so, for example, '@posts' is exposed as 'posts' to Liquid.
+
+h2. To do
+
+* Use the Liquid performance tip from: http://cjohansen.no/en/rails/liquid_email_templates_in_rails
+* Create a cache wrapper for the Liquid renderer
+* Add support for more than one level of nested resources
+
+h2. Credits
+
+M. E. Patterson (madraziel@gmail.com) - http://blog.digimonkey.com
+Fabio Akita (fabioakita@gmail.com) - http://www.akitaonrails.com
