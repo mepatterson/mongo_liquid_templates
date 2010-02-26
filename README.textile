@@ -63,9 +63,9 @@ Do this to render a liquid template from the database (example in HAML):
 = render_liquid('person')
 </code></pre>
 
-I borrowed a big chunk of code from _akitaonrails/dynamic_liquid_templates_, so this plugin can do all the same stuff in terms
+I borrowed a big chunk of code from *akitaonrails/dynamic_liquid_templates* , so this plugin can do all the same stuff in terms
 of passing different namespaces, collections, etc.  Look at the docs for that plugin to see how this works.
-http://github.com/akitaonrails/dynamic_liquid_templates
+<a href="http://github.com/akitaonrails/dynamic_liquid_templates">http://github.com/akitaonrails/dynamic_liquid_templates</a>
 
 h2. Credits
 
