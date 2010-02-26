@@ -54,7 +54,7 @@ Add a template to the Mongo collection:
 DynamicTemplate.create(:path => "person", :body => "<h2>{{ person.name }}</h2>\n<p>{{ person.biography }}</p>")
 </code></pre>
 
-* Every normal controller instance variables such as _@post_ or _@comments_ will be available as 'post' or 'comments' from inside the Liquid template. Your usual Rails helpers are also available as Liquid filters. 
+* All normal controller instance variables such as _@post_ or _@comments_ will be available as 'post' or 'comments' from inside the Liquid template. Your usual Rails helpers are also available as Liquid filters. 
 * If you've defined a _current_user_ method, that will be automagically passed into any template or nested template.
 * Any LiquidDrops defined in _app/liquid_drops_ will be available to ALL templates and nested templates.
 
@@ -66,10 +66,6 @@ Do this to render a liquid template from the database (example in HAML):
 I borrowed a big chunk of code from _akitaonrails/dynamic_liquid_templates_, so this plugin can do all the same stuff in terms
 of passing different namespaces, collections, etc.  Look at the docs for that plugin to see how this works.
 http://github.com/akitaonrails/dynamic_liquid_templates
-
-h2. To do
-
-* ...
 
 h2. Credits
 
