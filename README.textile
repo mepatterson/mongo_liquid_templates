@@ -16,7 +16,7 @@ So you should do this instead in your models for any data you want available in 
 def to_liquid
   {'name' => name, 'biography' => biography, 'created_at' => created_at}
 end
-</pre></code>
+</code></pre>
 
 Note that you *must* use string-based keys, not symbols!
 
