@@ -1,57 +1,24 @@
 module MongoLiquidTemplates
-  # Renders using Liquid as the template engine and reloads the templates from the
-  # database instead of files.
-  #
-  # * <tt>:collection</tt> - the name of the collection array (convention: controller name)
-  # * <tt>:object</tt> - the name of the single model object (convention: model name)
-  # * <tt>:layout</tt> - name of the layout template (convention: controller_name)
-  # * <tt>:controller</tt> - if you're not following the naming conventions you can 
-  #   override the controller name
-  # * <tt>:action</tt> - if you're not following the naming conventions you can override 
-  #   the action name
-  # * <tt>:dynamic_template_class</tt> - name of the model that searches the correct Liquid 
-  #   template (default: DynamicTemplate)
-  #
-  # == Dynamic Template
-  #
-  # This will only work if there is a proper model that handles retrieving Liquid templates from the
-  # database. The minimal schema is to have a string 'path' column and a text 'body' column. Paths
-  # will be such as 'posts/show', 'posts/index' or 'layouts/posts'.
-  # 
-  # == Overrides
-  #
-  # This method expects to find a 'parent' method defined in the controller that returns the
-  # parent model object in case this is a nested controller
-  #
-  # == Returns
-  #
-  # It will correctly assign needed instance variables to Liquid. It will also modify the
-  # model class to add +show_path+  and +edit_path+ caches to be called within the Liquid
-  # template. It also supports one level nested resource named routes.
-  #
-  # This way, the only need you have to do in your controller, if it follows normal 
-  # conventions is to add this method to the 'format.html' call within the 'respond_to'
-  # block, and it will do everything necessary
-  #
-  # You will also receive the usually expected 'posts' and 'post' named variables, 
-  # following your controller name. It will also create 'collection' and 'object' so you
-  # can make your templates more generic. And if you have defined the 'parent' method in
-  # your controller you will also get a 'parent' drop in your template.
-  #
-  # == Requirements
-  #
-  # Don't forget to add the Liquid gem to your environment.rb file:
-  #
-  #   config.gem "tobi-liquid", :lib => "liquid", :source => "http://gems.github.com"
-  #
-  def render_with_dynamic_liquid(assigns = {})
+  
+  def load_custom_drops
+    all_drops = {}
+    path = File.join(Rails.root, 'app', 'liquid_drops')
+    for filepath in Dir["#{path}/*.rb"]
+      file  = File.basename(filepath, ".rb")
+      klass = file.camelize.constantize
+      object_klass = file.split(/_drop$/).to_s
+      all_drops[object_klass.to_sym] = klass.new
+    end
+    all_drops
+  end
+ 
+  def render_liquid( path, assigns={} )
     _controller_name          = assigns.delete(:controller)      || self.controller_name
     _model_name               = _controller_name.singularize
     _collection_variable_name = (assigns.delete(:collection)     || "@#{_controller_name}").to_s # @comments
     _object_variable_name     = (assigns.delete(:object)         || "@#{_model_name}").to_s      # @comment
     _parent_name              = respond_to?(:parent) ? "#{parent.class.name.underscore}_" : nil
     _namespace                = assigns.include?(:namespace) ? "#{assigns[:namespace]}_" : nil
-    
     instance_variables.each do |variable|
       # discovers variables and path for index action
       case variable
@@ -62,13 +29,13 @@ module MongoLiquidTemplates
       when _object_variable_name:
         # post_comment_path(@post, @comment) or comment_path(@comment)
         _object_named_route = "#{_namespace}#{_parent_name}#{_model_name}_path(#{_parent_name ? 'parent, ' : nil}instance_variable_get(variable))" 
-
+ 
         assigns.merge!( "object_path" => eval(_object_named_route) ) rescue nil
         assigns.merge!( "object"      => instance_variable_get(variable) )
         assigns.merge!( _model_name   => instance_variable_get(variable) ) 
       end
     end
-    
+
     # if this is a nested resource, override the 'parent' method to return the parent object
     if _parent_name
       # posts_path(@post)
@@ -125,29 +92,32 @@ module MongoLiquidTemplates
     end
 
     assigns.merge!("form_authenticity_token" => form_authenticity_token)
-
-    # begin Liquid rendering procedure
-    _dynamic_template_klass = assigns.delete(:dynamic_template_class) || DynamicTemplate
     
-    _namespace_dir = assigns.include?(:namespace) ? "#{assigns.delete(:namespace)}/" : nil
-    _layout_path   = assigns.delete(:layout) || "layouts/#{_namespace_dir}#{_controller_name}"
-    _default_layout_path = "layouts/application"
-    _template_path = "#{_namespace_dir}#{_controller_name}/#{assigns.delete(:action) || self.action_name}"
-    
-    options = { :filters => [master_helper_module], :registers => {
-      :action_view => ActionView::Base.new([], {}, self), 
-      :controller  => self
-    } }
-    
-    _dynamic_layout = _dynamic_template_klass.find_by_path(_layout_path) || _dynamic_template_klass.find_by_path(_default_layout_path)
-    _filesystem = Liquid::Template.file_system = MongoLiquidTemplates::DatabaseFileSystem.new(_dynamic_template_klass, assigns, options)
-    _layout   = Liquid::Template.parse(_dynamic_layout.body) 
-    _template = Liquid::Template.parse(_dynamic_template_klass.find_by_path(_template_path).body)
+    assigns.merge!(load_custom_drops)
+    assigns.merge!({:user => current_user}) if self.respond_to?(:current_user)
+    options = { :filters => [self.controller.master_helper_module], :registers => {
+      :action_view => self,
+      :controller  => self.controller
+    } }    
+    Liquid::Template.file_system = MongoLiquidTemplates::DatabaseFileSystem.new(assigns.stringify_keys!, options)
+    source = Liquid::Template.file_system.read_template_file(path)
+    template = Liquid::Template.parse(source)
+    template.render(assigns.stringify_keys!, options)
+  end
+  
+end
 
-    _rend_temp      = _template.render(assigns, options)
-    _rend_layout    = _layout.render({'content_for_layout' => _rend_temp}, options)
 
-    headers["Content-Type"] ||= 'text/html; charset=utf-8'
-    render :text => _rend_layout
+# allows us to pre-parse Liquid::Template objects for fun and efficiency!
+module Liquid
+  class Template
+    class << self
+      def parse(source)
+        case source
+        when Liquid::Template then source
+        else Template.new.parse(source)
+        end
+      end      
+    end
   end
 end
